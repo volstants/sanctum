@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
@@ -14,7 +15,9 @@ export async function createRealm(formData: FormData) {
 
   if (!name) return { error: 'Name is required' };
 
-  const { data: realm, error } = await supabase
+  // Use service client to bypass RLS for write — auth is verified above
+  const service = createServiceClient();
+  const { data: realm, error } = await service
     .from('realms')
     .insert({ name, description: description || null, owner_id: user.id })
     .select()

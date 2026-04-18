@@ -4,22 +4,22 @@ import { useRealtimeMessages } from '@/hooks/useRealtimeMessages';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { useAppStore } from '@/stores/appStore';
-import { Loader2 } from 'lucide-react';
+import type { Message } from '@/types';
 
 interface Props {
   channelId: string;
   channelName: string;
   userId: string;
   isNarrator: boolean;
+  initialMessages: Message[];
 }
 
-export function ChatView({ channelId, channelName, userId, isNarrator }: Props) {
-  const { messages, loading } = useRealtimeMessages(channelId);
+export function ChatView({ channelId, channelName, userId, isNarrator, initialMessages }: Props) {
+  const { messages } = useRealtimeMessages(channelId, initialMessages);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="h-12 flex items-center justify-between px-4 border-b border-[var(--border)] flex-shrink-0 shadow-sm">
         <div className="flex items-center gap-2">
           <span className="text-[var(--text-muted)]">#</span>
@@ -33,16 +33,8 @@ export function ChatView({ channelId, channelName, userId, isNarrator }: Props) 
         )}
       </div>
 
-      {/* Messages */}
-      {loading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-5 h-5 text-[var(--text-muted)] animate-spin" />
-        </div>
-      ) : (
-        <MessageList messages={messages} currentUserId={userId} />
-      )}
+      <MessageList messages={messages} currentUserId={userId} />
 
-      {/* Input */}
       <ChatInput
         channelId={channelId}
         userId={userId}

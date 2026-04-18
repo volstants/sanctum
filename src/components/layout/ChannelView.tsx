@@ -1,13 +1,13 @@
 'use client';
 
-import type { Channel } from '@/types';
+import type { Channel, Message } from '@/types';
 import { ChatView } from '@/components/chat/ChatView';
 import { Map, Sparkles, Mic } from 'lucide-react';
 
 const COMING_SOON: Record<string, { icon: React.ElementType; label: string; phase: string }> = {
-  vtt:   { icon: Map,      label: 'VTT Canvas',    phase: 'Phase 3' },
+  vtt:   { icon: Map,      label: 'VTT Canvas',   phase: 'Phase 3' },
   ai:    { icon: Sparkles, label: 'AI Co-Master',  phase: 'Phase 4' },
-  voice: { icon: Mic,      label: 'Voice Chat',    phase: 'Phase 5' },
+  voice: { icon: Mic,      label: 'Voice Chat',   phase: 'Phase 5' },
 };
 
 interface Props {
@@ -16,9 +16,10 @@ interface Props {
   userId: string;
   isNarrator: boolean;
   displayName: string;
+  initialMessages?: Message[];
 }
 
-export function ChannelView({ channel, userId, isNarrator }: Props) {
+export function ChannelView({ channel, userId, isNarrator, initialMessages = [] }: Props) {
   if (channel.type === 'chat') {
     return (
       <ChatView
@@ -26,6 +27,7 @@ export function ChannelView({ channel, userId, isNarrator }: Props) {
         channelName={channel.name}
         userId={userId}
         isNarrator={isNarrator}
+        initialMessages={initialMessages}
       />
     );
   }

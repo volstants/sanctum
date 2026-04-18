@@ -8,16 +8,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!user) redirect('/auth/login');
 
-  // Fetch user's profile and realms
+  const { data: memberships } = await supabase
+    .from('realm_members')
+    .select('realm_id')
+    .eq('user_id', user.id);
+
+  const realmIds = memberships?.map((m) => m.realm_id) ?? [];
+
   const [{ data: profile }, { data: realms }] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).single(),
-    supabase
-      .from('realms')
-      .select('*')
-      .in('id',
-        supabase.from('realm_members').select('realm_id').eq('user_id', user.id)
-      )
-      .order('created_at'),
+    realmIds.length > 0
+      ? supabase.from('realms').select('*').in('id', realmIds).order('created_at')
+      : Promise.resolve({ data: [] }),
   ]);
 
   return (

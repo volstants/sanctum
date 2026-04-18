@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { sendMessage } from '@/lib/actions/messages';
 import { parseDiceCommand, isDiceCommand } from '@/lib/dice';
 import { Send, Dices } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,11 +13,10 @@ interface Props {
   onMessageSent?: (content: string) => void;
 }
 
-export function ChatInput({ channelId, userId, isNarrator, onMessageSent }: Props) {
+export function ChatInput({ channelId, isNarrator, onMessageSent }: Props) {
   const [value, setValue] = useState('');
   const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const supabase = createClient();
 
   const isDice = isDiceCommand(value);
 
@@ -39,18 +38,19 @@ export function ChatInput({ channelId, userId, isNarrator, onMessageSent }: Prop
       }
     }
 
-    await supabase.from('messages').insert({
-      channel_id: channelId,
-      user_id: userId,
+    const result = await sendMessage({
+      channelId,
       content: messageContent,
-      is_narrator: isNarrator,
-      metadata: Object.keys(metadata).length ? metadata : null,
+      isNarrator,
+      metadata,
     });
+
+    if (result?.error) console.error('Send failed:', result.error);
 
     onMessageSent?.(messageContent);
     setSending(false);
     textareaRef.current?.focus();
-  }, [value, sending, channelId, userId, isNarrator, onMessageSent, supabase]);
+  }, [value, sending, channelId, isNarrator, onMessageSent]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
