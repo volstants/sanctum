@@ -102,15 +102,13 @@ function MessageRow({ message, showHeader, isOwn }: {
         {isDice ? (
           <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] bg-[var(--bg-floating)] rounded-lg px-3 py-2 w-fit border border-[var(--border)]">
             <Dices className="w-4 h-4 text-[var(--brand)] flex-shrink-0" />
-            <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose-sm prose-invert [&_strong]:text-[var(--brand)] [&_strong]:text-base">
-              {message.content}
-            </ReactMarkdown>
+            <div className="prose-sm prose-invert [&_strong]:text-[var(--brand)] [&_strong]:text-base">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+            </div>
           </div>
         ) : (
-          <div className={`text-sm leading-relaxed ${isNarrator ? 'text-[var(--text-primary)] italic' : 'text-[var(--text-secondary)]'}`}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose-sm prose-invert [&_strong]:text-white [&_code]:bg-[var(--bg-floating)] [&_code]:px-1 [&_code]:rounded">
-              {message.content}
-            </ReactMarkdown>
+          <div className={`text-sm leading-relaxed prose-sm prose-invert [&_strong]:text-white [&_code]:bg-[var(--bg-floating)] [&_code]:px-1 [&_code]:rounded ${isNarrator ? 'text-[var(--text-primary)] italic' : 'text-[var(--text-secondary)]'}`}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
           </div>
         )}
       </div>
