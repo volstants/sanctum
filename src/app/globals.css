@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+/* ── Sanctum Design Tokens (Discord dark palette + RPG brutalism) ── */
+:root {
+  /* Backgrounds — dark layered like Discord */
+  --bg-primary:     #1e1f22;   /* main content area */
+  --bg-secondary:   #2b2d31;   /* channel list */
+  --bg-tertiary:    #313338;   /* message area */
+  --bg-sidebar:     #1e1f22;   /* realm list */
+  --bg-floating:    #111214;   /* tooltips, dropdowns */
+  --bg-modifier-hover:    rgba(255,255,255,0.06);
+  --bg-modifier-active:   rgba(255,255,255,0.12);
+  --bg-modifier-selected: rgba(255,255,255,0.08);
+
+  /* Text */
+  --text-primary:   #f2f3f5;
+  --text-secondary: #b5bac1;
+  --text-muted:     #80848e;
+  --text-link:      #00a8fc;
+
+  /* Brand — amber/gold for RPG feel instead of Discord blurple */
+  --brand:          #f0a500;
+  --brand-hover:    #d4920a;
+  --brand-dim:      rgba(240,165,0,0.15);
+
+  /* Danger */
+  --danger:         #f23f43;
+  --danger-hover:   #da373c;
+
+  /* Success */
+  --success:        #23a55a;
+
+  /* Borders */
+  --border:         rgba(255,255,255,0.06);
+  --border-strong:  rgba(255,255,255,0.12);
+
+  /* Channel type colors */
+  --channel-chat:   #b5bac1;
+  --channel-vtt:    #f0a500;
+  --channel-ai:     #9d8eff;
+  --channel-voice:  #23a55a;
+
+  /* Highlight types */
+  --highlight-combat:   #f23f43;
+  --highlight-plot:     #9d8eff;
+  --highlight-death:    #f0a500;
+  --highlight-loot:     #23a55a;
+
+  /* Fonts */
+  --font-display: 'Inter', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
+}
+
+@theme inline {
+  --color-brand:      var(--brand);
+  --color-bg-primary: var(--bg-primary);
+  --font-sans:        var(--font-display);
+  --font-mono:        var(--font-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar       { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg-modifier-active); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* Utilities */
+.font-mono { font-family: var(--font-mono); }
+.truncate-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
