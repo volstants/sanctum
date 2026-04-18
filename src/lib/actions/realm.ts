@@ -12,14 +12,14 @@ export async function createRealm(formData: FormData) {
 
   const name = String(formData.get('name') ?? '').trim();
   const description = String(formData.get('description') ?? '').trim();
+  const rpgSystem = String(formData.get('rpg_system') ?? '').trim();
 
   if (!name) return { error: 'Name is required' };
 
-  // Use service client to bypass RLS for write — auth is verified above
   const service = createServiceClient();
   const { data: realm, error } = await service
     .from('realms')
-    .insert({ name, description: description || null, owner_id: user.id })
+    .insert({ name, description: description || null, rpg_system: rpgSystem || null, owner_id: user.id })
     .select()
     .single();
 

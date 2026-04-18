@@ -57,7 +57,7 @@ export function ChannelList({ realm, channels, members, activeChannelId, current
         <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
           Channels
         </p>
-        {channels.map((ch) => {
+        {channels.filter((ch) => ch.type !== 'ai').map((ch) => {
           const Icon = CHANNEL_ICONS[ch.type] ?? Hash;
           const color = CHANNEL_COLORS[ch.type] ?? 'var(--channel-chat)';
           const isActive = ch.id === activeChannelId;
@@ -97,7 +97,7 @@ export function ChannelList({ realm, channels, members, activeChannelId, current
             </div>
             <span className="text-sm text-[var(--text-secondary)] truncate flex-1">{m.display_name}</span>
             {m.role === 'narrator' && (
-              <Crown className="w-3 h-3 text-[var(--brand)] flex-shrink-0" title="Narrator" />
+              <span title="Narrator"><Crown className="w-3 h-3 text-[var(--brand)] flex-shrink-0" /></span>
             )}
           </div>
         ))}

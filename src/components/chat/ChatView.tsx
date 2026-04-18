@@ -1,6 +1,7 @@
 'use client';
 
 import { useRealtimeMessages } from '@/hooks/useRealtimeMessages';
+import { useCoMasterAnalysis } from '@/hooks/useCoMasterAnalysis';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { useAppStore } from '@/stores/appStore';
@@ -9,14 +10,17 @@ import type { Message } from '@/types';
 interface Props {
   channelId: string;
   channelName: string;
+  realmId: string;
   userId: string;
   isNarrator: boolean;
   initialMessages: Message[];
 }
 
-export function ChatView({ channelId, channelName, userId, isNarrator, initialMessages }: Props) {
+export function ChatView({ channelId, channelName, realmId, userId, isNarrator, initialMessages }: Props) {
   const { messages } = useRealtimeMessages(channelId, initialMessages);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
+
+  useCoMasterAnalysis(realmId, isNarrator, messages);
 
   return (
     <div className="flex flex-col h-full">

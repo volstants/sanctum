@@ -13,6 +13,20 @@ export interface Realm {
   owner_id: string;
   invite_code: string;
   icon_url: string | null;
+  rpg_system: string | null;
+  created_at: string;
+}
+
+export interface Rulebook {
+  id: string;
+  realm_id: string;
+  name: string;
+  storage_path: string;
+  extracted_text: string | null;
+  page_count: number | null;
+  file_size: number | null;
+  status: 'processing' | 'ready' | 'error';
+  error_message: string | null;
   created_at: string;
 }
 

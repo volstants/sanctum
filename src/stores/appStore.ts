@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Realm, Channel, RealmMember, Profile, CoMasterSuggestion } from '@/types';
+import type { Realm, Channel, RealmMember, Profile, CoMasterSuggestion, Message } from '@/types';
 
 interface AppState {
   // Auth
@@ -24,7 +24,12 @@ interface AppState {
   coMasterSuggestions: CoMasterSuggestion[];
   isCoMasterThinking: boolean;
   addSuggestion: (s: CoMasterSuggestion) => void;
+  clearSuggestions: () => void;
   setCoMasterThinking: (v: boolean) => void;
+
+  // Live chat messages (shared between ChatView and CoMasterPanel)
+  channelMessages: Message[];
+  setChannelMessages: (msgs: Message[]) => void;
 
   // Session recording
   activeSessionId: string | null;
@@ -55,9 +60,13 @@ export const useAppStore = create<AppState>((set) => ({
   isCoMasterThinking: false,
   addSuggestion: (s) =>
     set((state) => ({
-      coMasterSuggestions: [s, ...state.coMasterSuggestions].slice(0, 20),
+      coMasterSuggestions: [s, ...state.coMasterSuggestions].slice(0, 30),
     })),
+  clearSuggestions: () => set({ coMasterSuggestions: [] }),
   setCoMasterThinking: (isCoMasterThinking) => set({ isCoMasterThinking }),
+
+  channelMessages: [],
+  setChannelMessages: (channelMessages) => set({ channelMessages }),
 
   activeSessionId: null,
   setActiveSessionId: (activeSessionId) => set({ activeSessionId }),

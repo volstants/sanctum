@@ -2,7 +2,7 @@
 
 import { createRealm } from '@/lib/actions/realm';
 import { motion } from 'framer-motion';
-import { Sword, ArrowLeft } from 'lucide-react';
+import { Sword, ArrowLeft, BookOpen } from 'lucide-react';
 import Link from 'next/link';
 import { useActionState } from 'react';
 
@@ -65,6 +65,22 @@ export default function NewRealmPage() {
             />
           </div>
 
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-1.5">
+              <BookOpen className="w-3 h-3" />
+              RPG System
+            </label>
+            <input
+              name="rpg_system"
+              maxLength={60}
+              placeholder="e.g. D&D 5e, Pathfinder 2e, Call of Cthulhu 7e..."
+              className="px-3 py-2.5 bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] text-sm focus:outline-none focus:border-[var(--brand)] transition-colors"
+            />
+            <p className="text-[10px] text-[var(--text-muted)]">
+              You can upload the rulebook PDFs after creating the realm. The AI will use them as the sole source of truth.
+            </p>
+          </div>
+
           {state?.error && (
             <p className="text-[var(--danger)] text-sm">{state.error}</p>
           )}
@@ -72,7 +88,7 @@ export default function NewRealmPage() {
           <button
             type="submit"
             disabled={isPending}
-            className="py-3 bg-[var(--brand)] hover:bg-[var(--brand-hover)] disabled:opacity-50 text-white rounded-lg font-bold text-sm uppercase tracking-wide transition-colors"
+            className="py-3 bg-[var(--brand)] hover:bg-[var(--brand-hover)] disabled:opacity-50 text-black rounded-lg font-bold text-sm uppercase tracking-wide transition-colors"
           >
             {isPending ? 'Creating…' : 'Create Realm'}
           </button>

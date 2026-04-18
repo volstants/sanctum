@@ -16,7 +16,7 @@ export default async function ChannelPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/auth/login');
 
-  const [{ data: channel }, { data: membership }, { data: messages }] = await Promise.all([
+  const [{ data: channel }, { data: membership }, { data: messages }, { data: realm }] = await Promise.all([
     service.from('channels').select('*').eq('id', channelId).single(),
     service.from('realm_members').select('role, display_name').eq('realm_id', realmId).eq('user_id', user.id).single(),
     service.from('messages')
@@ -24,6 +24,7 @@ export default async function ChannelPage({ params }: Props) {
       .eq('channel_id', channelId)
       .order('created_at', { ascending: true })
       .limit(100),
+    service.from('realms').select('rpg_system').eq('id', realmId).single(),
   ]);
 
   if (!channel || !membership) notFound();
@@ -36,6 +37,7 @@ export default async function ChannelPage({ params }: Props) {
       isNarrator={membership.role === 'narrator'}
       displayName={membership.display_name}
       initialMessages={(messages as Message[]) ?? []}
+      realmSystem={realm?.rpg_system ?? null}
     />
   );
 }
