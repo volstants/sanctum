@@ -1,13 +1,13 @@
 'use client';
 
 import type { Channel } from '@/types';
+import { ChatView } from '@/components/chat/ChatView';
+import { Map, Sparkles, Mic } from 'lucide-react';
 
-// These will be filled in Phase 2 (chat) and Phase 3 (canvas)
-const PLACEHOLDER: Record<string, string> = {
-  chat:  'Chat channel — Phase 2',
-  vtt:   'VTT Canvas — Phase 3',
-  ai:    'AI Co-Master — Phase 4',
-  voice: 'Voice Chat — Phase 5',
+const COMING_SOON: Record<string, { icon: React.ElementType; label: string; phase: string }> = {
+  vtt:   { icon: Map,      label: 'VTT Canvas',    phase: 'Phase 3' },
+  ai:    { icon: Sparkles, label: 'AI Co-Master',  phase: 'Phase 4' },
+  voice: { icon: Mic,      label: 'Voice Chat',    phase: 'Phase 5' },
 };
 
 interface Props {
@@ -18,20 +18,31 @@ interface Props {
   displayName: string;
 }
 
-export function ChannelView({ channel }: Props) {
+export function ChannelView({ channel, userId, isNarrator }: Props) {
+  if (channel.type === 'chat') {
+    return (
+      <ChatView
+        channelId={channel.id}
+        channelName={channel.name}
+        userId={userId}
+        isNarrator={isNarrator}
+      />
+    );
+  }
+
+  const placeholder = COMING_SOON[channel.type];
+  if (!placeholder) return null;
+  const Icon = placeholder.icon;
+
   return (
     <div className="h-full flex flex-col">
-      {/* Channel header */}
-      <div className="h-12 flex items-center px-4 border-b border-[var(--border)] shadow-sm flex-shrink-0">
+      <div className="h-12 flex items-center px-4 border-b border-[var(--border)] flex-shrink-0">
         <span className="font-semibold text-[var(--text-primary)] text-sm"># {channel.name}</span>
-        <span className="ml-3 text-xs text-[var(--text-muted)] font-mono uppercase tracking-wider">
-          {channel.type}
-        </span>
       </div>
-
-      {/* Content area */}
-      <div className="flex-1 flex items-center justify-center text-[var(--text-muted)] text-sm">
-        {PLACEHOLDER[channel.type] ?? 'Coming soon'}
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-8">
+        <Icon className="w-12 h-12 text-[var(--text-muted)]" />
+        <p className="text-[var(--text-primary)] font-semibold">{placeholder.label}</p>
+        <p className="text-xs text-[var(--text-muted)]">Coming in {placeholder.phase}</p>
       </div>
     </div>
   );
