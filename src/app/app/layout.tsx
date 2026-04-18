@@ -21,7 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
 
   return (
-    <AppShell profile={profile} realms={realms ?? []}>
+    <AppShell profile={profile} realms={realms ?? []} userId={user.id}>
       {children}
     </AppShell>
   );
