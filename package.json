@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "setup:keys": "node scripts/setup-api-keys.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.50.1",
