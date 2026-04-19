@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Realm, Channel, RealmMember, Profile, CoMasterSuggestion, Message } from '@/types';
-import { type OpenRouterModelId, DEFAULT_MODEL } from '@/lib/ai-models';
+import { type OpenRouterModelId, DEFAULT_MODEL, OPENROUTER_MODELS } from '@/lib/ai-models';
 
 const MODEL_STORAGE_KEY = 'sanctum:comaster-model';
 
@@ -47,11 +47,13 @@ interface AppState {
   toggleMobileMenu: () => void;
 }
 
+const VALID_MODEL_IDS = new Set(OPENROUTER_MODELS.map((m) => m.id));
+
 function loadStoredModel(): OpenRouterModelId {
   if (typeof window === 'undefined') return DEFAULT_MODEL;
   try {
     const stored = localStorage.getItem(MODEL_STORAGE_KEY);
-    return (stored as OpenRouterModelId) ?? DEFAULT_MODEL;
+    return (stored && VALID_MODEL_IDS.has(stored)) ? stored as OpenRouterModelId : DEFAULT_MODEL;
   } catch {
     return DEFAULT_MODEL;
   }
