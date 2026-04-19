@@ -16,8 +16,10 @@ import {
   ChevronDown, ChevronRight, Trash2, Mic, MicOff,
   Radio, BrainCircuit, AlertCircle, Bot,
 } from 'lucide-react';
-import { suggestAbilities, generateSessionDiary, convertStatBlock, transcribeAudioChunk, getProviderStatus, OPENROUTER_MODELS } from '@/lib/actions/ai';
-import type { OpenRouterModelId, ProviderStatus } from '@/lib/actions/ai';
+import { suggestAbilities, generateSessionDiary, convertStatBlock, transcribeAudioChunk, getProviderStatus } from '@/lib/actions/ai';
+import type { ProviderStatus } from '@/lib/actions/ai';
+import { OPENROUTER_MODELS } from '@/lib/ai-models';
+import type { OpenRouterModelId } from '@/lib/ai-models';
 import { useAppStore } from '@/stores/appStore';
 import { useAudioChunks, type AudioChunk } from '@/hooks/useAudioChunks';
 import { useVoiceTranscript } from '@/hooks/useVoiceTranscript';

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Realm, Channel, RealmMember, Profile, CoMasterSuggestion, Message } from '@/types';
-import { type OpenRouterModelId, DEFAULT_MODEL } from '@/lib/actions/ai';
+import { type OpenRouterModelId, DEFAULT_MODEL } from '@/lib/ai-models';
 
 const MODEL_STORAGE_KEY = 'sanctum:comaster-model';
 
