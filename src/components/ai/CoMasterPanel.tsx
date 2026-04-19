@@ -338,14 +338,6 @@ function LiveTab({
   const listenError  = effectiveMode === 'audio' ? audio.error : speech.error;
   const isProcessing = effectiveMode === 'audio' ? processingChunk : speechLoading;
 
-  const toggleListen = useCallback(() => {
-    if (isListening) stopAndSave();
-    else {
-      if (effectiveMode === 'audio') audio.start();
-      else speech.start();
-    }
-  }, [isListening, effectiveMode, audio, speech, stopAndSave]);
-
   const stopAndSave = useCallback(() => {
     if (effectiveMode === 'audio') audio.stop();
     else speech.stop();
@@ -354,6 +346,14 @@ function LiveTab({
       sessionIdRef.current = null;
     }
   }, [effectiveMode, audio, speech]);
+
+  const toggleListen = useCallback(() => {
+    if (isListening) stopAndSave();
+    else {
+      if (effectiveMode === 'audio') audio.start();
+      else speech.start();
+    }
+  }, [isListening, effectiveMode, audio, speech, stopAndSave]);
 
   const handleClear = () => {
     transcriptRef.current = '';
