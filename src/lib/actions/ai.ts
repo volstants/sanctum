@@ -316,6 +316,22 @@ export async function transcribeAudio(
   return (await res.text()).trim();
 }
 
+// ── Provider availability check ───────────────────────────────────────────────
+
+export interface ProviderStatus {
+  gemini: boolean;
+  groq: boolean;
+  openRouter: boolean;
+}
+
+export async function getProviderStatus(): Promise<ProviderStatus> {
+  return {
+    gemini:      !!(process.env.GEMINI_API_KEY      && process.env.GEMINI_API_KEY      !== 'placeholder'),
+    groq:        !!(process.env.GROQ_API_KEY         && process.env.GROQ_API_KEY         !== 'placeholder'),
+    openRouter:  !!(process.env.OPENROUTER_API_KEY   && process.env.OPENROUTER_API_KEY   !== 'placeholder'),
+  };
+}
+
 // ── Audio chunk: transcribe (Groq Whisper) + analyze (OpenRouter) ─────────────
 
 export async function transcribeAudioChunk(

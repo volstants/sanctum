@@ -16,8 +16,8 @@ import {
   ChevronDown, ChevronRight, Trash2, Mic, MicOff,
   Radio, BrainCircuit, AlertCircle, Bot,
 } from 'lucide-react';
-import { suggestAbilities, generateSessionDiary, convertStatBlock, transcribeAudioChunk, OPENROUTER_MODELS } from '@/lib/actions/ai';
-import type { OpenRouterModelId } from '@/lib/actions/ai';
+import { suggestAbilities, generateSessionDiary, convertStatBlock, transcribeAudioChunk, getProviderStatus, OPENROUTER_MODELS } from '@/lib/actions/ai';
+import type { OpenRouterModelId, ProviderStatus } from '@/lib/actions/ai';
 import { useAppStore } from '@/stores/appStore';
 import { useAudioChunks, type AudioChunk } from '@/hooks/useAudioChunks';
 import { useVoiceTranscript } from '@/hooks/useVoiceTranscript';
@@ -48,17 +48,34 @@ const TYPE_META: Record<string, { label: string; cls: string }> = {
   ability:   { label: 'Habilidade', cls: 'bg-yellow-900/50 text-yellow-300 border-yellow-700/50' },
 };
 
+// ── Provider badge ────────────────────────────────────────────────────────────
+
+function ProviderBanner({ providers }: { providers: ProviderStatus | null }) {
+  if (!providers) return null;
+  const missing: string[] = [];
+  if (!providers.openRouter) missing.push('OPENROUTER_API_KEY');
+  if (!providers.groq)       missing.push('GROQ_API_KEY');
+  if (missing.length === 0)  return null;
+  return (
+    <div className="mx-2 mt-2 px-3 py-2 rounded-lg bg-yellow-950/40 border border-yellow-700/40 text-[10px] text-yellow-300 leading-relaxed flex-shrink-0">
+      <strong>Funcionalidade limitada.</strong> Configure no <code>.env.local</code>:<br />
+      {missing.map((k) => <span key={k} className="font-mono block">{k}=…</span>)}
+    </div>
+  );
+}
+
 // ── Model selector ────────────────────────────────────────────────────────────
 
-function ModelSelector() {
+function ModelSelector({ disabled }: { disabled?: boolean }) {
   const { selectedModel, setSelectedModel } = useAppStore();
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[var(--border)] flex-shrink-0">
+    <div className={`flex items-center gap-1.5 px-2 py-1.5 border-b border-[var(--border)] flex-shrink-0 ${disabled ? 'opacity-40' : ''}`}>
       <Bot className="w-3 h-3 text-[var(--text-muted)] flex-shrink-0" />
       <select
         value={selectedModel}
         onChange={(e) => setSelectedModel(e.target.value as OpenRouterModelId)}
-        className="flex-1 text-[10px] bg-transparent text-[var(--text-secondary)] focus:outline-none cursor-pointer"
+        disabled={disabled}
+        className="flex-1 text-[10px] bg-transparent text-[var(--text-secondary)] focus:outline-none cursor-pointer disabled:cursor-not-allowed"
       >
         {OPENROUTER_MODELS.map((m) => (
           <option key={m.id} value={m.id}>{m.label}</option>
@@ -72,7 +89,12 @@ function ModelSelector() {
 
 export function CoMasterPanel({ realmId, realmSystem, isNarrator }: Props) {
   const [tab, setTab] = useState<Tab>('live');
+  const [providers, setProviders] = useState<ProviderStatus | null>(null);
   const { coMasterSuggestions, isCoMasterThinking, clearSuggestions, channelMessages } = useAppStore();
+
+  useEffect(() => {
+    getProviderStatus().then(setProviders);
+  }, []);
 
   const chatMessages = channelMessages.map((m) => ({
     sender: m.profiles?.display_name ?? (m.is_narrator ? 'Narrador' : 'Jogador'),
@@ -80,32 +102,44 @@ export function CoMasterPanel({ realmId, realmSystem, isNarrator }: Props) {
     timestamp: m.created_at,
   }));
 
+  const noOpenRouter = providers !== null && !providers.openRouter;
+
   return (
     <div className="h-full flex flex-col">
-      {/* Model selector — always visible */}
-      <ModelSelector />
+      {/* Provider warnings */}
+      <ProviderBanner providers={providers} />
+
+      {/* Model selector — disabled if no OpenRouter */}
+      <ModelSelector disabled={noOpenRouter} />
 
       {/* Tab bar */}
       <div className="flex border-b border-[var(--border)] flex-shrink-0">
-        {TABS.map(({ id, icon: Icon, label }) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[9px] font-semibold transition-colors border-b-2 ${
-              tab === id
-                ? 'border-[var(--brand)] text-[var(--brand)]'
-                : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            <Icon className="w-3.5 h-3.5" />
-            {label}
-            {id === 'live' && coMasterSuggestions.length > 0 && (
-              <span className="absolute mt-0 w-3.5 h-3.5 bg-[var(--brand)] text-black text-[8px] font-bold rounded-full flex items-center justify-center -translate-y-4 translate-x-3">
-                {coMasterSuggestions.length}
-              </span>
-            )}
-          </button>
-        ))}
+        {TABS.map(({ id, icon: Icon, label }) => {
+          const tabNeedsOR = id !== 'live';
+          const tabDisabled = tabNeedsOR && noOpenRouter;
+          return (
+            <button
+              key={id}
+              onClick={() => !tabDisabled && setTab(id)}
+              title={tabDisabled ? 'Requer OPENROUTER_API_KEY' : undefined}
+              className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[9px] font-semibold transition-colors border-b-2 ${
+                tabDisabled
+                  ? 'border-transparent text-[var(--text-muted)] opacity-35 cursor-not-allowed'
+                  : tab === id
+                    ? 'border-[var(--brand)] text-[var(--brand)]'
+                    : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {label}
+              {id === 'live' && coMasterSuggestions.length > 0 && (
+                <span className="absolute mt-0 w-3.5 h-3.5 bg-[var(--brand)] text-black text-[8px] font-bold rounded-full flex items-center justify-center -translate-y-4 translate-x-3">
+                  {coMasterSuggestions.length}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col">
@@ -117,6 +151,7 @@ export function CoMasterPanel({ realmId, realmSystem, isNarrator }: Props) {
             isNarrator={isNarrator}
             realmId={realmId}
             chatMessages={chatMessages}
+            providers={providers}
           />
         )}
         {tab === 'suggest' && <div className="flex-1 overflow-y-auto"><AbilitySuggestTab realmId={realmId} realmSystem={realmSystem} /></div>}
@@ -133,7 +168,7 @@ const SPEECH_TRIGGER_SEGMENTS = 6;
 const SPEECH_COOLDOWN_MS = 90_000;
 
 function LiveTab({
-  suggestions, thinking, onClear, isNarrator, realmId, chatMessages,
+  suggestions, thinking, onClear, isNarrator, realmId, chatMessages, providers,
 }: {
   suggestions: CoMasterSuggestion[];
   thinking: boolean;
@@ -141,9 +176,16 @@ function LiveTab({
   isNarrator: boolean;
   realmId: string;
   chatMessages: { sender: string; content: string; timestamp: string }[];
+  providers: ProviderStatus | null;
 }) {
   const { addSuggestion, setCoMasterThinking, members, selectedModel } = useAppStore();
   const { mode } = useVoiceMode(realmId);
+
+  // Derived availability flags
+  const hasGroq       = providers === null || providers.groq;       // null = still loading → optimistic
+  const hasOpenRouter = providers === null || providers.openRouter;
+  // If Groq unavailable and mode is audio, effective mode falls back to speech
+  const effectiveMode = (!hasGroq && mode === 'audio') ? 'speech' : mode;
 
   // ── Speaker tagging ───────────────────────────────────────────────────────
   const [currentSpeaker, setCurrentSpeaker] = useState('Narrador');
@@ -227,7 +269,7 @@ function LiveTab({
 
   // Auto-trigger speech analysis
   useEffect(() => {
-    if (mode !== 'speech' || !speech.isListening) return;
+    if (effectiveMode !== 'speech' || !speech.isListening || !hasOpenRouter) return;
     const newSegs = taggedSegments.length - lastSegmentCount.current;
     const cooldownOk = Date.now() - lastSpeechAnalyze.current > SPEECH_COOLDOWN_MS;
     if (newSegs >= SPEECH_TRIGGER_SEGMENTS && cooldownOk) {
@@ -236,19 +278,19 @@ function LiveTab({
       runSpeechAnalysis(taggedSegments);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taggedSegments.length, mode]);
+  }, [taggedSegments.length, effectiveMode, hasOpenRouter]);
 
-  const isListening  = mode === 'audio' ? audio.isRecording : speech.isListening;
-  const toggleListen = mode === 'audio' ? audio.toggle : speech.toggle;
-  const listenError  = mode === 'audio' ? audio.error : speech.error;
-  const isProcessing = mode === 'audio' ? processingChunk : speechLoading;
+  const isListening  = effectiveMode === 'audio' ? audio.isRecording : speech.isListening;
+  const toggleListen = effectiveMode === 'audio' ? audio.toggle : speech.toggle;
+  const listenError  = effectiveMode === 'audio' ? audio.error : speech.error;
+  const isProcessing = effectiveMode === 'audio' ? processingChunk : speechLoading;
 
   const handleClear = () => {
     transcriptRef.current = '';
     setChunkLog([]);
     setTaggedSegments([]);
     prevSegCountRef.current = 0;
-    if (mode === 'speech') speech.clear();
+    if (effectiveMode === 'speech') speech.clear();
   };
 
   const modelLabel = OPENROUTER_MODELS.find((m) => m.id === selectedModel)?.label ?? selectedModel;
@@ -271,12 +313,12 @@ function LiveTab({
                 </span>
                 <span className="text-[9px] text-[var(--text-muted)]">
                   {isListening
-                    ? mode === 'audio'
+                    ? effectiveMode === 'audio'
                       ? `Groq Whisper → ${modelLabel} (chunks 60s)`
-                      : `Speech API · auto a cada ${SPEECH_TRIGGER_SEGMENTS} falas · ${modelLabel}`
-                    : mode === 'audio'
+                      : `Speech API · auto a cada ${SPEECH_TRIGGER_SEGMENTS} falas · ${hasOpenRouter ? modelLabel : 'sem análise'}`
+                    : effectiveMode === 'audio'
                       ? 'Modo: Groq Whisper + OpenRouter'
-                      : 'Modo: Speech API + OpenRouter'}
+                      : hasOpenRouter ? 'Modo: Speech API + OpenRouter' : 'Modo: Speech API (análise desativada)'}
                 </span>
               </div>
             </div>
@@ -306,7 +348,7 @@ function LiveTab({
           )}
 
           {/* Speaker selector */}
-          {mode === 'speech' && isListening && speakerNames.length > 1 && (
+          {effectiveMode === 'speech' && isListening && speakerNames.length > 1 && (
             <div className="flex flex-wrap gap-1">
               <span className="text-[9px] text-[var(--text-muted)] self-center mr-0.5">Quem fala:</span>
               {speakerNames.map((name) => (
@@ -326,7 +368,7 @@ function LiveTab({
           )}
 
           {/* Speech transcript */}
-          {mode === 'speech' && taggedSegments.length > 0 && (
+          {effectiveMode === 'speech' && taggedSegments.length > 0 && (
             <div className="max-h-20 overflow-y-auto flex flex-col gap-0.5">
               {taggedSegments.slice(-6).map((s, i) => (
                 <p key={i} className="text-[10px] text-[var(--text-secondary)] leading-relaxed">
@@ -338,7 +380,7 @@ function LiveTab({
           )}
 
           {/* Audio chunk log */}
-          {mode === 'audio' && chunkLog.length > 0 && (
+          {effectiveMode === 'audio' && chunkLog.length > 0 && (
             <div className="max-h-24 overflow-y-auto flex flex-col gap-1.5">
               {chunkLog.map((c) => (
                 <div key={c.id} className="flex gap-2 items-start">
@@ -354,12 +396,19 @@ function LiveTab({
           {isProcessing && (
             <div className="flex items-center gap-1.5 text-[10px] text-[var(--brand)]">
               <Loader2 className="w-3 h-3 animate-spin" />
-              {mode === 'audio' ? 'Transcrevendo (Whisper) e analisando…' : 'Analisando sessão…'}
+              {effectiveMode === 'audio' ? 'Transcrevendo (Whisper) e analisando…' : 'Analisando sessão…'}
             </div>
           )}
 
-          {/* Analisar agora — só Speech mode */}
-          {mode === 'speech' && (taggedSegments.length > 0 || chatMessages.length > 0) && (
+          {/* Groq unavailable warning when mode was set to audio */}
+          {!hasGroq && mode === 'audio' && (
+            <p className="text-[10px] text-yellow-400">
+              Modo áudio requer GROQ_API_KEY — usando Speech API.
+            </p>
+          )}
+
+          {/* Analisar agora — só Speech mode, só se OpenRouter disponível */}
+          {effectiveMode === 'speech' && hasOpenRouter && (taggedSegments.length > 0 || chatMessages.length > 0) && (
             <button
               onClick={() => {
                 lastSpeechAnalyze.current = Date.now();
@@ -402,9 +451,11 @@ function LiveTab({
                 <BrainCircuit className="w-5 h-5 text-[var(--text-muted)]" />
               </div>
               <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                {isNarrator
-                  ? 'Sugestões aparecem automaticamente conforme a sessão avança, ou clique em "Analisar agora".'
-                  : 'Apenas o narrador recebe sugestões proativas.'}
+                {!hasOpenRouter
+                  ? 'Configure OPENROUTER_API_KEY para ativar sugestões proativas.'
+                  : isNarrator
+                    ? 'Sugestões aparecem automaticamente conforme a sessão avança, ou clique em "Analisar agora".'
+                    : 'Apenas o narrador recebe sugestões proativas.'}
               </p>
             </div>
           )}
