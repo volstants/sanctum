@@ -72,7 +72,10 @@ function ProviderBanner({ providers }: { providers: ProviderStatus | null }) {
 // ── Model selector ────────────────────────────────────────────────────────────
 
 function ModelSelector({ disabled }: { disabled?: boolean }) {
-  const { selectedModel, setSelectedModel } = useAppStore();
+  const { selectedModel, setSelectedModel, totalTokensUsed } = useAppStore();
+  const fmtTokens = (n: number) =>
+    n === 0 ? null : n >= 1000 ? `~${(n / 1000).toFixed(1)}k tokens` : `${n} tokens`;
+  const tokenLabel = fmtTokens(totalTokensUsed);
   return (
     <div className={`flex items-center gap-1.5 px-2 py-1.5 border-b border-[var(--border)] flex-shrink-0 ${disabled ? 'opacity-40' : ''}`}>
       <Bot className="w-3 h-3 text-[var(--text-muted)] flex-shrink-0" />
@@ -86,6 +89,11 @@ function ModelSelector({ disabled }: { disabled?: boolean }) {
           <option key={m.id} value={m.id}>{m.label}</option>
         ))}
       </select>
+      {tokenLabel && (
+        <span className="text-[9px] text-[var(--text-muted)] flex-shrink-0 font-mono" title="Tokens usados nesta sessão">
+          {tokenLabel}
+        </span>
+      )}
     </div>
   );
 }
@@ -187,7 +195,7 @@ function LiveTab({
   providers: ProviderStatus | null;
   onSessionCreated: (id: string) => void;
 }) {
-  const { addSuggestion, setCoMasterThinking, members, selectedModel } = useAppStore();
+  const { addSuggestion, setCoMasterThinking, members, selectedModel, addTokens } = useAppStore();
   const { mode } = useVoiceMode(realmId);
 
   // Derived availability flags
@@ -245,6 +253,7 @@ function LiveTab({
           recordedAt: chunk.startedAt,
         }]).catch(console.error);
       }
+      addTokens(result.tokensUsed ?? 0);
       if (result.suggestions.length > 0) {
         for (const s of result.suggestions) {
           addSuggestion({ id: `${Date.now()}-${Math.random()}`, title: s.title, description: s.description, mechanic: s.mechanic || null, type: s.type as never, timestamp: new Date() });
@@ -253,7 +262,7 @@ function LiveTab({
       }
     } catch (e) { setAudioError(String(e)); }
     finally { setProcessingChunk(false); setCoMasterThinking(false); }
-  }, [realmId, selectedModel, addSuggestion, setCoMasterThinking, ensureSession]);
+  }, [realmId, selectedModel, addSuggestion, setCoMasterThinking, ensureSession, addTokens]);
 
   const audio = useAudioChunks(handleChunk);
 
@@ -292,12 +301,13 @@ function LiveTab({
       const voiceMsgs = segs.map((s) => ({ sender: s.speaker, content: s.text }));
       const chatMsgs = chatMessages.map((m) => ({ sender: m.sender, content: m.content }));
       const combined = [...chatMsgs, ...voiceMsgs].slice(-30);
-      const result = await analyzeSession(realmId, combined, selectedModel);
-      for (const s of result) {
+      const { suggestions, tokensUsed } = await analyzeSession(realmId, combined, selectedModel);
+      addTokens(tokensUsed ?? 0);
+      for (const s of suggestions) {
         addSuggestion({ id: `${Date.now()}-${Math.random()}`, title: s.title, description: s.description, mechanic: s.mechanic || null, type: s.type as never, timestamp: new Date() });
       }
-      if (result.length > 0) {
-        saveSuggestions(sessionId, realmId, result).catch(console.error);
+      if (suggestions.length > 0) {
+        saveSuggestions(sessionId, realmId, suggestions).catch(console.error);
       }
       // Save unsaved speech segments
       const unsaved = segs.slice(lastSavedSegRef.current);
@@ -552,7 +562,7 @@ function LiveTab({
 // ── Ability Suggestions ────────────────────────────────────────────────────────
 
 function AbilitySuggestTab({ realmId, realmSystem }: { realmId: string; realmSystem: string | null }) {
-  const { selectedModel } = useAppStore();
+  const { selectedModel, addTokens } = useAppStore();
   const [description, setDescription] = useState('');
   const [suggestions, setSuggestions] = useState<AbilitySuggestion[]>([]);
   const [loading, setLoading] = useState(false);
@@ -563,7 +573,9 @@ function AbilitySuggestTab({ realmId, realmSystem }: { realmId: string; realmSys
     setLoading(true);
     setError('');
     try {
-      setSuggestions(await suggestAbilities(realmId, description, {}, selectedModel));
+      const result = await suggestAbilities(realmId, description, {}, selectedModel);
+      setSuggestions(result.suggestions);
+      addTokens(result.tokensUsed ?? 0);
     } catch (e) { setError(String(e)); }
     setLoading(false);
   };
@@ -610,7 +622,7 @@ function DiaryTab({ realmId, chatMessages, activeSessionId }: {
   chatMessages: { sender: string; content: string; timestamp: string }[];
   activeSessionId?: string | null;
 }) {
-  const { selectedModel } = useAppStore();
+  const { selectedModel, addTokens } = useAppStore();
   const [diary, setDiary] = useState<SessionDiary | null>(null);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -623,9 +635,10 @@ function DiaryTab({ realmId, chatMessages, activeSessionId }: {
     setSaved(false);
     try {
       const result = await generateSessionDiary(realmId, chatMessages, undefined, selectedModel);
-      setDiary(result);
+      setDiary(result.diary);
+      addTokens(result.tokensUsed ?? 0);
       if (activeSessionId) {
-        await saveSessionDiary(activeSessionId, result);
+        await saveSessionDiary(activeSessionId, result.diary);
         setSaved(true);
       }
     } catch (e) { setError(String(e)); }
@@ -725,7 +738,7 @@ function CollapsibleSection({ label, expanded, onToggle, children }: {
 // ── System Conversion ──────────────────────────────────────────────────────────
 
 function ConvertTab({ realmId, realmSystem }: { realmId: string; realmSystem: string | null }) {
-  const { selectedModel } = useAppStore();
+  const { selectedModel, addTokens } = useAppStore();
   const [fromSystem, setFromSystem] = useState('D&D 5e');
   const [toSystem, setToSystem] = useState(realmSystem ?? 'Pathfinder 2e');
   const [statsJson, setStatsJson] = useState('{\n  "name": "Goblin",\n  "hp": 7,\n  "ac": 15,\n  "str": 8,\n  "dex": 14\n}');
@@ -738,7 +751,9 @@ function ConvertTab({ realmId, realmSystem }: { realmId: string; realmSystem: st
     setError('');
     try {
       const stats = JSON.parse(statsJson);
-      setResult(await convertStatBlock(realmId, stats, fromSystem, toSystem, undefined, selectedModel));
+      const res = await convertStatBlock(realmId, stats, fromSystem, toSystem, undefined, selectedModel);
+      setResult(res.conversion);
+      addTokens(res.tokensUsed ?? 0);
     } catch (e) { setError(String(e)); }
     setLoading(false);
   };

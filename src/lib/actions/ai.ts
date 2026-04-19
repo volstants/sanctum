@@ -6,9 +6,14 @@ import { DEFAULT_MODEL } from '@/lib/ai-models';
 import type { OpenRouterModelId } from '@/lib/ai-models';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
-// Gemini      → imagem (generateTokenStats) apenas
+// Gemini      → visão (preferencial, se GEMINI_API_KEY disponível)
+// OpenRouter  → visão (fallback) + todo texto
 // Groq        → transcrição de áudio (Whisper large-v3)
-// OpenRouter  → tudo texto: análise, diário, skills, converter
+
+function hasGemini() {
+  const k = process.env.GEMINI_API_KEY;
+  return !!(k && k !== 'placeholder');
+}
 
 function getGemini() {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -28,11 +33,12 @@ function getOpenRouterKey() {
   return key;
 }
 
+// ── OpenRouter: text ──────────────────────────────────────────────────────────
 
 async function openRouterChat(
   prompt: string,
   model: OpenRouterModelId = DEFAULT_MODEL,
-): Promise<string> {
+): Promise<{ content: string; tokensUsed: number }> {
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -54,7 +60,53 @@ async function openRouterChat(
   }
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content ?? '';
+  return {
+    content:    data.choices?.[0]?.message?.content ?? '',
+    tokensUsed: data.usage?.total_tokens ?? 0,
+  };
+}
+
+// ── OpenRouter: vision ────────────────────────────────────────────────────────
+// Vision-capable free models on OpenRouter
+const VISION_MODEL = 'google/gemini-2.5-flash:free';
+
+async function openRouterVision(
+  imageBase64: string,
+  mimeType: string,
+  prompt: string,
+): Promise<{ content: string; tokensUsed: number }> {
+  const dataUrl = `data:${mimeType};base64,${imageBase64}`;
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${getOpenRouterKey()}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://sanctum.app',
+      'X-Title': 'Sanctum RPG',
+    },
+    body: JSON.stringify({
+      model: VISION_MODEL,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: dataUrl } },
+          { type: 'text', text: prompt },
+        ],
+      }],
+      max_tokens: 1000,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`OpenRouter vision ${res.status}: ${err}`);
+  }
+
+  const data = await res.json();
+  return {
+    content:    data.choices?.[0]?.message?.content ?? '',
+    tokensUsed: data.usage?.total_tokens ?? 0,
+  };
 }
 
 function parseJSON<T>(raw: string): T {
@@ -97,20 +149,29 @@ export interface AudioChunkResult {
   transcript: string;
   suggestions: ProactiveSuggestion[];
   keyMoments: { timestamp: string; description: string }[];
+  tokensUsed: number;
 }
 
-// ── Token Stats from image — Gemini (único que precisa de visão) ──────────────
+// Generic wrapper for token-aware results
+export interface WithTokens<T> { data: T; tokensUsed: number; }
+
+// ── Token Stats from image — Gemini (preferencial) ou OpenRouter vision ───────
+
+const IMAGE_ANALYSIS_PROMPT_SUFFIX = `
+Analyze the image. Identify the creature or character depicted.
+Generate a stat block using ONLY the formats, ranges, and mechanics from the rulebook above.
+Return ONLY a JSON object:
+{"name":"","type":"","hp":0,"maxHp":0,"ac":0,"speed":"","str":0,"dex":0,"con":0,"int":0,"wis":0,"cha":0,"cr":"","attacks":"","traits":""}`;
 
 const FALLBACK_TOKEN_PROMPT = `Analyze this image and identify the creature or character.
-Return ONLY a JSON object with:
+Return ONLY a JSON object:
 {"name":"","type":"","hp":0,"maxHp":0,"ac":0,"speed":"30 ft.","str":10,"dex":10,"con":10,"int":10,"wis":10,"cha":10,"cr":"1","attacks":"","traits":""}`;
 
 export async function generateTokenStats(
   imageBase64: string,
   mimeType: string,
   realmId: string,
-): Promise<TokenStats> {
-  const ai = getGemini();
+): Promise<TokenStats & { tokensUsed: number; visionProvider: 'gemini' | 'openrouter' }> {
   const rulebookContext = await getRulebookContext(realmId);
 
   const prompt = rulebookContext.trim()
@@ -120,19 +181,23 @@ Do NOT use any external RPG knowledge. Base ALL numbers and formats exclusively 
 === RULEBOOK (sole source of truth) ===
 ${rulebookContext.slice(0, 120_000)}
 === END RULEBOOK ===
-
-Analyze the image. Identify the creature or character depicted.
-Generate a stat block using ONLY the formats, ranges, and mechanics from the rulebook above.
-Return ONLY a JSON object:
-{"name":"","type":"","hp":0,"maxHp":0,"ac":0,"speed":"","str":0,"dex":0,"con":0,"int":0,"wis":0,"cha":0,"cr":"","attacks":"","traits":""}`
+${IMAGE_ANALYSIS_PROMPT_SUFFIX}`
     : FALLBACK_TOKEN_PROMPT;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: [{ role: 'user', parts: [{ inlineData: { mimeType, data: imageBase64 } }, { text: prompt }] }],
-  });
+  // Use Gemini if key available, else OpenRouter vision
+  if (hasGemini()) {
+    const ai = getGemini();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ inlineData: { mimeType, data: imageBase64 } }, { text: prompt }] }],
+    });
+    const tokensUsed = response.usageMetadata?.totalTokenCount ?? 0;
+    return { ...parseJSON<TokenStats>(response.text ?? '{}'), tokensUsed, visionProvider: 'gemini' };
+  }
 
-  return parseJSON<TokenStats>(response.text ?? '{}');
+  // Fallback: OpenRouter vision
+  const { content, tokensUsed } = await openRouterVision(imageBase64, mimeType, prompt);
+  return { ...parseJSON<TokenStats>(content || '{}'), tokensUsed, visionProvider: 'openrouter' };
 }
 
 // ── Ability suggestions — OpenRouter ─────────────────────────────────────────
@@ -142,7 +207,7 @@ export async function suggestAbilities(
   characterDescription: string,
   currentStats: Record<string, unknown>,
   model: OpenRouterModelId = DEFAULT_MODEL,
-): Promise<AbilitySuggestion[]> {
+): Promise<{ suggestions: AbilitySuggestion[]; tokensUsed: number }> {
   const rulebookContext = await getRulebookContext(realmId);
 
   const systemSection = rulebookContext.trim()
@@ -158,8 +223,8 @@ Suggest 4 abilities or features appropriate for this character.
 Return ONLY a JSON array:
 [{"name":"","description":"","mechanic":"(exact rule text or formula)","source":"(page/section in rulebook or 'general rule')"}]`;
 
-  const raw = await openRouterChat(prompt, model);
-  return parseJSON<AbilitySuggestion[]>(raw || '[]');
+  const { content, tokensUsed } = await openRouterChat(prompt, model);
+  return { suggestions: parseJSON<AbilitySuggestion[]>(content || '[]'), tokensUsed };
 }
 
 // ── Session diary — OpenRouter ────────────────────────────────────────────────
@@ -194,9 +259,12 @@ Return ONLY a JSON object:
   "nextSessionHooks": ["ganchos para a próxima sessão"]
 }`;
 
-  const raw = await openRouterChat(prompt, model);
-  return parseJSON<SessionDiary>(raw || '{}');
+  const { content, tokensUsed } = await openRouterChat(prompt, model);
+  return { diary: parseJSON<SessionDiary>(content || '{}'), tokensUsed };
 }
+
+// Fix return type
+export type GenerateSessionDiaryResult = { diary: SessionDiary; tokensUsed: number };
 
 // ── System conversion — OpenRouter ───────────────────────────────────────────
 
@@ -230,8 +298,8 @@ Return ONLY a JSON object:
   "notes": "conversion notes and approximations made"
 }`;
 
-  const raw = await openRouterChat(prompt, model);
-  return parseJSON<SystemConversion>(raw || '{}');
+  const { content, tokensUsed } = await openRouterChat(prompt, model);
+  return { conversion: parseJSON<SystemConversion>(content || '{}'), tokensUsed };
 }
 
 // ── Proactive session analysis — OpenRouter ───────────────────────────────────
@@ -240,7 +308,7 @@ export async function analyzeSession(
   realmId: string,
   recentMessages: { sender: string; content: string }[],
   model: OpenRouterModelId = DEFAULT_MODEL,
-): Promise<ProactiveSuggestion[]> {
+): Promise<{ suggestions: ProactiveSuggestion[]; tokensUsed: number }> {
   const rulebookContext = await getRulebookContext(realmId);
 
   const ruleSection = rulebookContext.trim()
@@ -268,8 +336,8 @@ Return ONLY a JSON array:
   }
 ]`;
 
-  const raw = await openRouterChat(prompt, model);
-  return parseJSON<ProactiveSuggestion[]>(raw || '[]');
+  const { content, tokensUsed } = await openRouterChat(prompt, model);
+  return { suggestions: parseJSON<ProactiveSuggestion[]>(content || '[]'), tokensUsed };
 }
 
 // ── Audio transcription — Groq Whisper ───────────────────────────────────────
@@ -337,7 +405,7 @@ export async function transcribeAudioChunk(
   }
 
   if (!transcript.trim()) {
-    return { transcript: '', suggestions: [], keyMoments: [] };
+    return { transcript: '', suggestions: [], keyMoments: [], tokensUsed: 0 };
   }
 
   // Step 2 — análise com OpenRouter
@@ -374,15 +442,16 @@ Retorne APENAS um JSON:
   ]
 }`;
 
-  const raw = await openRouterChat(prompt, model);
+  const { content, tokensUsed } = await openRouterChat(prompt, model);
   const analysis = parseJSON<{
     suggestions: ProactiveSuggestion[];
     keyMoments: { timestamp: string; description: string }[];
-  }>(raw || '{"suggestions":[],"keyMoments":[]}');
+  }>(content || '{"suggestions":[],"keyMoments":[]}');
 
   return {
     transcript,
     suggestions: analysis.suggestions ?? [],
     keyMoments: analysis.keyMoments ?? [],
+    tokensUsed,
   };
 }

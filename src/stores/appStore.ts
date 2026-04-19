@@ -34,6 +34,11 @@ interface AppState {
   selectedModel: OpenRouterModelId;
   setSelectedModel: (m: OpenRouterModelId) => void;
 
+  // Token usage tracking (session total)
+  totalTokensUsed: number;
+  addTokens: (n: number) => void;
+  resetTokens: () => void;
+
   // Live chat messages (shared between ChatView and CoMasterPanel)
   channelMessages: Message[];
   setChannelMessages: (msgs: Message[]) => void;
@@ -89,6 +94,10 @@ export const useAppStore = create<AppState>((set) => ({
     try { localStorage.setItem(MODEL_STORAGE_KEY, selectedModel); } catch { /* SSR */ }
     set({ selectedModel });
   },
+
+  totalTokensUsed: 0,
+  addTokens: (n) => set((s) => ({ totalTokensUsed: s.totalTokensUsed + n })),
+  resetTokens: () => set({ totalTokensUsed: 0 }),
 
   channelMessages: [],
   setChannelMessages: (channelMessages) => set({ channelMessages }),
