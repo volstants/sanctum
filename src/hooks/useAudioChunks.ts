@@ -10,7 +10,7 @@ export interface AudioChunk {
   durationSec: number;
 }
 
-const CHUNK_INTERVAL_MS = 45_000; // 45s chunks
+const CHUNK_INTERVAL_MS = 60_000; // 60s — Groq Whisper funciona melhor com chunks maiores
 
 export function useAudioChunks(onChunk: (chunk: AudioChunk) => void) {
   const [isRecording, setIsRecording] = useState(false);
@@ -36,7 +36,6 @@ export function useAudioChunks(onChunk: (chunk: AudioChunk) => void) {
       });
       streamRef.current = stream;
 
-      // Pick best supported format
       const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
         .find((t) => MediaRecorder.isTypeSupported(t)) ?? 'audio/webm';
 
@@ -51,7 +50,7 @@ export function useAudioChunks(onChunk: (chunk: AudioChunk) => void) {
       };
 
       recorder.ondataavailable = (e) => {
-        if (e.data.size < 512) return; // skip empty/near-empty chunks
+        if (e.data.size < 512) return;
         const chunk: AudioChunk = {
           id: `chunk-${++chunkIdRef.current}`,
           blob: e.data,
@@ -70,13 +69,12 @@ export function useAudioChunks(onChunk: (chunk: AudioChunk) => void) {
         setIsRecording(false);
       };
 
-      // If the mic track ends unexpectedly, restart the whole recorder
+      // Se a track de microfone cair, reinicia automaticamente
       stream.getAudioTracks().forEach((track) => {
         track.onended = () => {
           if (activeRef.current) {
             recorderRef.current = null;
             streamRef.current = null;
-            // small delay so browser releases the device before re-acquiring
             setTimeout(() => { if (activeRef.current) start(); }, 500);
           }
         };

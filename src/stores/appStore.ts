@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import type { Realm, Channel, RealmMember, Profile, CoMasterSuggestion, Message } from '@/types';
+import { type OpenRouterModelId, DEFAULT_MODEL } from '@/lib/actions/ai';
+
+const MODEL_STORAGE_KEY = 'sanctum:comaster-model';
 
 interface AppState {
   // Auth
@@ -27,6 +30,10 @@ interface AppState {
   clearSuggestions: () => void;
   setCoMasterThinking: (v: boolean) => void;
 
+  // Co-Master model selection
+  selectedModel: OpenRouterModelId;
+  setSelectedModel: (m: OpenRouterModelId) => void;
+
   // Live chat messages (shared between ChatView and CoMasterPanel)
   channelMessages: Message[];
   setChannelMessages: (msgs: Message[]) => void;
@@ -38,6 +45,16 @@ interface AppState {
   // UI
   isMobileMenuOpen: boolean;
   toggleMobileMenu: () => void;
+}
+
+function loadStoredModel(): OpenRouterModelId {
+  if (typeof window === 'undefined') return DEFAULT_MODEL;
+  try {
+    const stored = localStorage.getItem(MODEL_STORAGE_KEY);
+    return (stored as OpenRouterModelId) ?? DEFAULT_MODEL;
+  } catch {
+    return DEFAULT_MODEL;
+  }
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -65,6 +82,12 @@ export const useAppStore = create<AppState>((set) => ({
   clearSuggestions: () => set({ coMasterSuggestions: [] }),
   setCoMasterThinking: (isCoMasterThinking) => set({ isCoMasterThinking }),
 
+  selectedModel: DEFAULT_MODEL,
+  setSelectedModel: (selectedModel) => {
+    try { localStorage.setItem(MODEL_STORAGE_KEY, selectedModel); } catch { /* SSR */ }
+    set({ selectedModel });
+  },
+
   channelMessages: [],
   setChannelMessages: (channelMessages) => set({ channelMessages }),
 
@@ -74,3 +97,11 @@ export const useAppStore = create<AppState>((set) => ({
   isMobileMenuOpen: false,
   toggleMobileMenu: () => set((s) => ({ isMobileMenuOpen: !s.isMobileMenuOpen })),
 }));
+
+// Hydrate model from localStorage on client
+if (typeof window !== 'undefined') {
+  const stored = loadStoredModel();
+  if (stored !== DEFAULT_MODEL) {
+    useAppStore.setState({ selectedModel: stored });
+  }
+}
