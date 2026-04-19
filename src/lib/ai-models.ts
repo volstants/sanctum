@@ -9,7 +9,6 @@ export const OPENROUTER_MODELS = [
   { id: 'google/gemma-3-27b-it:free',               label: 'Gemma 3 27B'           },
   { id: 'google/gemini-2.5-flash:free',             label: 'Gemini 2.5 Flash'      },
   { id: 'google/gemini-3.1-flash-lite:free',        label: 'Gemini 3.1 Flash Lite' },
-  { id: 'mistralai/mistral-7b-instruct:free',       label: 'Mistral 7B'            },
 ] as const;
 
 export type OpenRouterModelId = typeof OPENROUTER_MODELS[number]['id'];
