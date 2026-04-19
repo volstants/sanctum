@@ -5,9 +5,6 @@ import { getRulebookContext } from './rulebooks';
 import { DEFAULT_MODEL } from '@/lib/ai-models';
 import type { OpenRouterModelId } from '@/lib/ai-models';
 
-export type { OpenRouterModelId } from '@/lib/ai-models';
-export { OPENROUTER_MODELS, DEFAULT_MODEL } from '@/lib/ai-models';
-
 // ── Providers ─────────────────────────────────────────────────────────────────
 // Gemini      → imagem (generateTokenStats) apenas
 // Groq        → transcrição de áudio (Whisper large-v3)
