@@ -14,10 +14,12 @@ function blobToBase64(blob: Blob): Promise<string> {
 import {
   Sparkles, ArrowLeftRight, ScrollText, Loader2,
   ChevronDown, ChevronRight, Trash2, Mic, MicOff,
-  Radio, BrainCircuit, AlertCircle, Bot,
+  Radio, BrainCircuit, AlertCircle, Bot, History,
 } from 'lucide-react';
 import { suggestAbilities, generateSessionDiary, convertStatBlock, transcribeAudioChunk, getProviderStatus } from '@/lib/actions/ai';
 import type { ProviderStatus } from '@/lib/actions/ai';
+import { createSession, endSession, saveTranscriptBatch, saveSuggestions, saveSessionDiary, getSessionHistory, getSessionDetail } from '@/lib/actions/sessions';
+import type { SessionSummary, SessionDetail } from '@/lib/actions/sessions';
 import { OPENROUTER_MODELS } from '@/lib/ai-models';
 import type { OpenRouterModelId } from '@/lib/ai-models';
 import { useAppStore } from '@/stores/appStore';
@@ -33,13 +35,14 @@ interface Props {
   isNarrator: boolean;
 }
 
-type Tab = 'live' | 'suggest' | 'diary' | 'convert';
+type Tab = 'live' | 'suggest' | 'diary' | 'convert' | 'history';
 
 const TABS: { id: Tab; icon: React.ElementType; label: string }[] = [
   { id: 'live',    icon: Radio,          label: 'Ao Vivo'   },
   { id: 'suggest', icon: Sparkles,       label: 'Skills'    },
   { id: 'diary',   icon: ScrollText,     label: 'Diário'    },
   { id: 'convert', icon: ArrowLeftRight, label: 'Converter' },
+  { id: 'history', icon: History,        label: 'Histórico' },
 ];
 
 const TYPE_META: Record<string, { label: string; cls: string }> = {
@@ -92,6 +95,7 @@ function ModelSelector({ disabled }: { disabled?: boolean }) {
 export function CoMasterPanel({ realmId, realmSystem, isNarrator }: Props) {
   const [tab, setTab] = useState<Tab>('live');
   const [providers, setProviders] = useState<ProviderStatus | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const { coMasterSuggestions, isCoMasterThinking, clearSuggestions, channelMessages } = useAppStore();
 
   useEffect(() => {
@@ -154,11 +158,13 @@ export function CoMasterPanel({ realmId, realmSystem, isNarrator }: Props) {
             realmId={realmId}
             chatMessages={chatMessages}
             providers={providers}
+            onSessionCreated={setActiveSessionId}
           />
         )}
         {tab === 'suggest' && <div className="flex-1 overflow-y-auto"><AbilitySuggestTab realmId={realmId} realmSystem={realmSystem} /></div>}
-        {tab === 'diary'   && <div className="flex-1 overflow-y-auto"><DiaryTab realmId={realmId} chatMessages={chatMessages} /></div>}
+        {tab === 'diary'   && <div className="flex-1 overflow-y-auto"><DiaryTab realmId={realmId} chatMessages={chatMessages} activeSessionId={activeSessionId} /></div>}
         {tab === 'convert' && <div className="flex-1 overflow-y-auto"><ConvertTab realmId={realmId} realmSystem={realmSystem} /></div>}
+        {tab === 'history' && <div className="flex-1 overflow-y-auto"><HistoryTab realmId={realmId} /></div>}
       </div>
     </div>
   );
@@ -170,7 +176,7 @@ const SPEECH_TRIGGER_SEGMENTS = 6;
 const SPEECH_COOLDOWN_MS = 90_000;
 
 function LiveTab({
-  suggestions, thinking, onClear, isNarrator, realmId, chatMessages, providers,
+  suggestions, thinking, onClear, isNarrator, realmId, chatMessages, providers, onSessionCreated,
 }: {
   suggestions: CoMasterSuggestion[];
   thinking: boolean;
@@ -179,6 +185,7 @@ function LiveTab({
   realmId: string;
   chatMessages: { sender: string; content: string; timestamp: string }[];
   providers: ProviderStatus | null;
+  onSessionCreated: (id: string) => void;
 }) {
   const { addSuggestion, setCoMasterThinking, members, selectedModel } = useAppStore();
   const { mode } = useVoiceMode(realmId);
@@ -200,6 +207,17 @@ function LiveTab({
   };
   const speakerNames = ['Narrador', ...members.map((m) => m.display_name.split(' ')[0])];
 
+  // ── Session persistence ───────────────────────────────────────────────────
+  const sessionIdRef = useRef<string | null>(null);
+
+  const ensureSession = useCallback(async () => {
+    if (sessionIdRef.current) return sessionIdRef.current;
+    const id = await createSession(realmId);
+    sessionIdRef.current = id;
+    onSessionCreated(id);
+    return id;
+  }, [realmId, onSessionCreated]);
+
   // ── Audio chunk mode ──────────────────────────────────────────────────────
   const [processingChunk, setProcessingChunk] = useState(false);
   const [audioError, setAudioError] = useState('');
@@ -210,6 +228,7 @@ function LiveTab({
     setProcessingChunk(true);
     setCoMasterThinking(true);
     try {
+      const sessionId = await ensureSession();
       const base64 = await blobToBase64(chunk.blob);
       const result = await transcribeAudioChunk(base64, chunk.mimeType, realmId, transcriptRef.current, selectedModel);
       if (result.transcript) {
@@ -218,13 +237,23 @@ function LiveTab({
           { id: chunk.id, preview: result.transcript.slice(0, 80), at: chunk.startedAt },
           ...prev.slice(0, 9),
         ]);
+        // Persist transcript
+        saveTranscriptBatch(sessionId, realmId, [{
+          speaker: 'Sessão',
+          content: result.transcript,
+          source: 'audio',
+          recordedAt: chunk.startedAt,
+        }]).catch(console.error);
       }
-      for (const s of result.suggestions) {
-        addSuggestion({ id: `${Date.now()}-${Math.random()}`, title: s.title, description: s.description, mechanic: s.mechanic || null, type: s.type as never, timestamp: new Date() });
+      if (result.suggestions.length > 0) {
+        for (const s of result.suggestions) {
+          addSuggestion({ id: `${Date.now()}-${Math.random()}`, title: s.title, description: s.description, mechanic: s.mechanic || null, type: s.type as never, timestamp: new Date() });
+        }
+        saveSuggestions(sessionId, realmId, result.suggestions).catch(console.error);
       }
     } catch (e) { setAudioError(String(e)); }
     finally { setProcessingChunk(false); setCoMasterThinking(false); }
-  }, [realmId, selectedModel, addSuggestion, setCoMasterThinking]);
+  }, [realmId, selectedModel, addSuggestion, setCoMasterThinking, ensureSession]);
 
   const audio = useAudioChunks(handleChunk);
 
@@ -248,6 +277,7 @@ function LiveTab({
   const [speechError, setSpeechError] = useState('');
   const lastSpeechAnalyze = useRef(0);
   const lastSegmentCount = useRef(0);
+  const lastSavedSegRef = useRef(0);
   const analyzingRef = useRef(false);
 
   const runSpeechAnalysis = useCallback(async (segs: { speaker: string; text: string; timestamp: string }[]) => {
@@ -257,6 +287,7 @@ function LiveTab({
     setSpeechError('');
     setCoMasterThinking(true);
     try {
+      const sessionId = await ensureSession();
       const { analyzeSession } = await import('@/lib/actions/ai');
       const voiceMsgs = segs.map((s) => ({ sender: s.speaker, content: s.text }));
       const chatMsgs = chatMessages.map((m) => ({ sender: m.sender, content: m.content }));
@@ -265,9 +296,20 @@ function LiveTab({
       for (const s of result) {
         addSuggestion({ id: `${Date.now()}-${Math.random()}`, title: s.title, description: s.description, mechanic: s.mechanic || null, type: s.type as never, timestamp: new Date() });
       }
+      if (result.length > 0) {
+        saveSuggestions(sessionId, realmId, result).catch(console.error);
+      }
+      // Save unsaved speech segments
+      const unsaved = segs.slice(lastSavedSegRef.current);
+      if (unsaved.length > 0) {
+        saveTranscriptBatch(sessionId, realmId, unsaved.map((s) => ({
+          speaker: s.speaker, content: s.text, source: 'speech' as const, recordedAt: s.timestamp,
+        }))).catch(console.error);
+        lastSavedSegRef.current = segs.length;
+      }
     } catch (e) { setSpeechError(String(e)); }
     finally { analyzingRef.current = false; setSpeechLoading(false); setCoMasterThinking(false); }
-  }, [realmId, selectedModel, chatMessages, addSuggestion, setCoMasterThinking]);
+  }, [realmId, selectedModel, chatMessages, addSuggestion, setCoMasterThinking, ensureSession]);
 
   // Auto-trigger speech analysis
   useEffect(() => {
@@ -283,15 +325,32 @@ function LiveTab({
   }, [taggedSegments.length, effectiveMode, hasOpenRouter]);
 
   const isListening  = effectiveMode === 'audio' ? audio.isRecording : speech.isListening;
-  const toggleListen = effectiveMode === 'audio' ? audio.toggle : speech.toggle;
   const listenError  = effectiveMode === 'audio' ? audio.error : speech.error;
   const isProcessing = effectiveMode === 'audio' ? processingChunk : speechLoading;
+
+  const toggleListen = useCallback(() => {
+    if (isListening) stopAndSave();
+    else {
+      if (effectiveMode === 'audio') audio.start();
+      else speech.start();
+    }
+  }, [isListening, effectiveMode, audio, speech, stopAndSave]);
+
+  const stopAndSave = useCallback(() => {
+    if (effectiveMode === 'audio') audio.stop();
+    else speech.stop();
+    if (sessionIdRef.current) {
+      endSession(sessionIdRef.current).catch(console.error);
+      sessionIdRef.current = null;
+    }
+  }, [effectiveMode, audio, speech]);
 
   const handleClear = () => {
     transcriptRef.current = '';
     setChunkLog([]);
     setTaggedSegments([]);
     prevSegCountRef.current = 0;
+    lastSavedSegRef.current = 0;
     if (effectiveMode === 'speech') speech.clear();
   };
 
@@ -546,18 +605,29 @@ function AbilitySuggestTab({ realmId, realmSystem }: { realmId: string; realmSys
 
 // ── Session Diary ─────────────────────────────────────────────────────────────
 
-function DiaryTab({ realmId, chatMessages }: { realmId: string; chatMessages: { sender: string; content: string; timestamp: string }[] }) {
+function DiaryTab({ realmId, chatMessages, activeSessionId }: {
+  realmId: string;
+  chatMessages: { sender: string; content: string; timestamp: string }[];
+  activeSessionId?: string | null;
+}) {
   const { selectedModel } = useAppStore();
   const [diary, setDiary] = useState<SessionDiary | null>(null);
   const [loading, setLoading] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const run = async () => {
     setLoading(true);
     setError('');
+    setSaved(false);
     try {
-      setDiary(await generateSessionDiary(realmId, chatMessages, undefined, selectedModel));
+      const result = await generateSessionDiary(realmId, chatMessages, undefined, selectedModel);
+      setDiary(result);
+      if (activeSessionId) {
+        await saveSessionDiary(activeSessionId, result);
+        setSaved(true);
+      }
     } catch (e) { setError(String(e)); }
     setLoading(false);
   };
@@ -578,6 +648,7 @@ function DiaryTab({ realmId, chatMessages }: { realmId: string; chatMessages: { 
         {loading ? 'Escrevendo…' : 'Gerar Diário'}
       </button>
       {error && <p className="text-red-400 text-xs">{error}</p>}
+      {saved && <p className="text-green-400 text-[11px]">✓ Salvo na sessão</p>}
       {chatMessages.length === 0 && !diary && (
         <p className="text-[11px] text-[var(--text-muted)]">Nenhuma mensagem no canal ainda.</p>
       )}
@@ -708,6 +779,136 @@ function ConvertTab({ realmId, realmSystem }: { realmId: string; realmSystem: st
             {JSON.stringify(result.convertedStats, null, 2)}
           </pre>
           {result.notes && <p className="text-[10px] text-[var(--text-muted)] italic leading-relaxed">{result.notes}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Session History ────────────────────────────────────────────────────────────
+
+function HistoryTab({ realmId }: { realmId: string }) {
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [selected, setSelected] = useState<SessionDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    getSessionHistory(realmId)
+      .then(setSessions)
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
+  }, [realmId]);
+
+  const loadDetail = async (id: string) => {
+    setDetailLoading(true);
+    try {
+      setSelected(await getSessionDetail(id));
+    } catch (e) { setError(String(e)); }
+    setDetailLoading(false);
+  };
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-12">
+      <Loader2 className="w-5 h-5 animate-spin text-[var(--brand)]" />
+    </div>
+  );
+
+  if (selected) return (
+    <div className="p-3 flex flex-col gap-3">
+      <button
+        onClick={() => setSelected(null)}
+        className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+      >
+        <ChevronRight className="w-3 h-3 rotate-180" /> Voltar
+      </button>
+      <p className="text-sm font-bold text-[var(--text-primary)]">
+        {selected.title ?? new Date(selected.started_at).toLocaleDateString('pt-BR')}
+      </p>
+
+      {selected.diary_json && (
+        <div className="bg-[var(--bg-primary)] border border-[var(--brand)]/30 rounded-xl p-3">
+          <p className="text-[10px] font-bold text-[var(--brand)] uppercase mb-1">Diário</p>
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed whitespace-pre-line">
+            {selected.diary_json.summary}
+          </p>
+        </div>
+      )}
+
+      {selected.transcripts.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase">
+            Transcrição ({selected.transcripts.length} segmentos)
+          </p>
+          <div className="max-h-48 overflow-y-auto flex flex-col gap-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl p-2">
+            {selected.transcripts.map((t, i) => (
+              <p key={i} className="text-[10px] text-[var(--text-secondary)] leading-relaxed">
+                <span className="text-[var(--brand)] font-semibold">{t.speaker}:</span> {t.content}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selected.suggestions.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase">
+            Sugestões ({selected.suggestions.length})
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {selected.suggestions.map((s, i) => {
+              const meta = TYPE_META[s.type] ?? { label: s.type, cls: 'bg-gray-700/50 text-gray-300 border-gray-600/50' };
+              return (
+                <div key={i} className="bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg p-2 flex flex-col gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${meta.cls}`}>{meta.label}</span>
+                    <span className="text-xs font-semibold text-[var(--text-primary)]">{s.title}</span>
+                  </div>
+                  <p className="text-[10px] text-[var(--text-secondary)]">{s.description}</p>
+                  {s.mechanic && <p className="text-[10px] font-mono text-[var(--text-muted)] bg-[var(--bg-secondary)] rounded px-1.5 py-1">{s.mechanic}</p>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="p-3 flex flex-col gap-2">
+      {error && <p className="text-red-400 text-xs">{error}</p>}
+      {sessions.length === 0 && (
+        <div className="flex flex-col items-center gap-3 py-8 text-center">
+          <History className="w-8 h-8 text-[var(--text-muted)]" />
+          <p className="text-xs text-[var(--text-muted)]">Nenhuma sessão gravada ainda.</p>
+          <p className="text-[10px] text-[var(--text-muted)]">Inicie o Co-Mestre auditivo para criar a primeira sessão.</p>
+        </div>
+      )}
+      {sessions.map((s) => (
+        <button
+          key={s.id}
+          onClick={() => loadDetail(s.id)}
+          className="w-full text-left bg-[var(--bg-primary)] border border-[var(--border)] hover:border-[var(--brand)]/50 rounded-xl p-3 flex flex-col gap-1 transition-colors"
+        >
+          <p className="text-xs font-semibold text-[var(--text-primary)]">
+            {s.title ?? new Date(s.started_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+          </p>
+          <p className="text-[10px] text-[var(--text-muted)]">
+            {new Date(s.started_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            {s.ended_at ? ` – ${new Date(s.ended_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ' (em curso)'}
+          </p>
+          <div className="flex gap-3 text-[10px] text-[var(--text-muted)] mt-0.5">
+            <span>{s.transcript_count} falas</span>
+            <span>{s.suggestion_count} sugestões</span>
+            {s.has_diary && <span className="text-[var(--brand)]">✓ diário</span>}
+          </div>
+        </button>
+      ))}
+      {detailLoading && (
+        <div className="flex justify-center py-4">
+          <Loader2 className="w-4 h-4 animate-spin text-[var(--brand)]" />
         </div>
       )}
     </div>
