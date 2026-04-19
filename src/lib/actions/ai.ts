@@ -200,6 +200,50 @@ ${IMAGE_ANALYSIS_PROMPT_SUFFIX}`
   return { ...parseJSON<TokenStats>(content || '{}'), tokensUsed, visionProvider: 'openrouter' };
 }
 
+// ── Ability suggestions from image — Gemini or OpenRouter vision ──────────────
+
+export async function suggestAbilitiesFromImage(
+  imageBase64: string,
+  mimeType: string,
+  realmId: string,
+  extraDescription: string = '',
+  model: OpenRouterModelId = DEFAULT_MODEL,
+): Promise<{ suggestions: AbilitySuggestion[]; tokensUsed: number }> {
+  const rulebookContext = await getRulebookContext(realmId);
+
+  const ruleSection = rulebookContext.trim()
+    ? `Use ONLY the following rulebook as source for mechanics, ranges and formats.\n\n=== RULEBOOK ===\n${rulebookContext.slice(0, 80_000)}\n=== END ===\n\n`
+    : 'Use D&D 5e rules as reference.\n\n';
+
+  const extraSection = extraDescription.trim()
+    ? `Additional context provided by the user: ${extraDescription}\n\n`
+    : '';
+
+  const prompt = `${ruleSection}${extraSection}Look at the character or creature in the image.
+Based on their visual appearance, equipment, posture, and style, suggest 4 appropriate abilities or features.
+${extraDescription ? 'Also consider the additional context provided above.' : ''}
+
+Return ONLY a JSON array:
+[{"name":"","description":"","mechanic":"(exact rule text or formula)","source":"(rulebook page/section or 'general rule')"}]`;
+
+  let content: string;
+  let tokensUsed: number;
+
+  if (hasGemini()) {
+    const ai = getGemini();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ inlineData: { mimeType, data: imageBase64 } }, { text: prompt }] }],
+    });
+    content = response.text ?? '[]';
+    tokensUsed = response.usageMetadata?.totalTokenCount ?? 0;
+  } else {
+    ({ content, tokensUsed } = await openRouterVision(imageBase64, mimeType, prompt));
+  }
+
+  return { suggestions: parseJSON<AbilitySuggestion[]>(content || '[]'), tokensUsed };
+}
+
 // ── Ability suggestions — OpenRouter ─────────────────────────────────────────
 
 export async function suggestAbilities(

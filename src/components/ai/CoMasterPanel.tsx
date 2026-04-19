@@ -14,9 +14,9 @@ function blobToBase64(blob: Blob): Promise<string> {
 import {
   Sparkles, ArrowLeftRight, ScrollText, Loader2,
   ChevronDown, ChevronRight, Trash2, Mic, MicOff,
-  Radio, BrainCircuit, AlertCircle, Bot, History,
+  Radio, BrainCircuit, AlertCircle, Bot, History, ImagePlus, X,
 } from 'lucide-react';
-import { suggestAbilities, generateSessionDiary, convertStatBlock, transcribeAudioChunk, getProviderStatus } from '@/lib/actions/ai';
+import { suggestAbilities, suggestAbilitiesFromImage, generateSessionDiary, convertStatBlock, transcribeAudioChunk, getProviderStatus } from '@/lib/actions/ai';
 import type { ProviderStatus } from '@/lib/actions/ai';
 import { createSession, endSession, saveTranscriptBatch, saveSuggestions, saveSessionDiary, getSessionHistory, getSessionDetail } from '@/lib/actions/sessions';
 import type { SessionSummary, SessionDetail } from '@/lib/actions/sessions';
@@ -567,40 +567,106 @@ function AbilitySuggestTab({ realmId, realmSystem }: { realmId: string; realmSys
   const [suggestions, setSuggestions] = useState<AbilitySuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [imageMime, setImageMime] = useState<string>('image/jpeg');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageFile = (file: File) => {
+    setImageMime(file.type || 'image/jpeg');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      setImagePreview(dataUrl);
+      setImageBase64(dataUrl.split(',')[1]);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearImage = () => {
+    setImagePreview(null);
+    setImageBase64(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const run = async () => {
-    if (!description.trim()) return;
+    if (!imageBase64 && !description.trim()) return;
     setLoading(true);
     setError('');
     try {
-      const result = await suggestAbilities(realmId, description, {}, selectedModel);
+      let result: { suggestions: AbilitySuggestion[]; tokensUsed: number };
+      if (imageBase64) {
+        result = await suggestAbilitiesFromImage(imageBase64, imageMime, realmId, description, selectedModel);
+      } else {
+        result = await suggestAbilities(realmId, description, {}, selectedModel);
+      }
       setSuggestions(result.suggestions);
       addTokens(result.tokensUsed ?? 0);
     } catch (e) { setError(String(e)); }
     setLoading(false);
   };
 
+  const canSubmit = !loading && (!!imageBase64 || description.trim().length > 0);
+
   return (
     <div className="p-3 flex flex-col gap-3">
       <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-        Descreva um personagem ou situação. A IA sugere habilidades com base exclusivamente nos seus rulebooks{realmSystem ? ` (${realmSystem})` : ''}.
+        Envie uma imagem do personagem <strong>e/ou</strong> descreva-o. A IA sugere habilidades com base nos seus rulebooks{realmSystem ? ` (${realmSystem})` : ''}.
       </p>
+
+      {/* Image upload area */}
+      {imagePreview ? (
+        <div className="relative rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--bg-primary)]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imagePreview} alt="Personagem" className="w-full max-h-40 object-contain" />
+          <button
+            onClick={clearImage}
+            className="absolute top-2 right-2 p-1 bg-black/60 hover:bg-black/80 rounded-full transition-colors"
+            title="Remover imagem"
+          >
+            <X className="w-3.5 h-3.5 text-white" />
+          </button>
+          <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-black/50 text-[10px] text-white/70 text-center">
+            Imagem carregada — análise via Gemini / OpenRouter Vision
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="flex flex-col items-center gap-2 py-5 border-2 border-dashed border-[var(--border)] hover:border-[var(--brand)]/60 rounded-xl transition-colors text-[var(--text-muted)] hover:text-[var(--brand)]"
+        >
+          <ImagePlus className="w-6 h-6" />
+          <span className="text-[11px] font-semibold">Carregar imagem do personagem</span>
+          <span className="text-[10px]">JPG, PNG, WEBP — opcional</span>
+        </button>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f); }}
+      />
+
       <textarea
         value={description}
         onChange={(e) => setDescription(e.target.value)}
-        placeholder="Ex: Um ladino humano especializado em venenos..."
-        rows={4}
+        placeholder={imageBase64 ? 'Contexto adicional (opcional)…' : 'Ex: Um ladino humano especializado em venenos…'}
+        rows={imageBase64 ? 2 : 4}
         className="w-full px-3 py-2 bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--brand)] resize-none"
       />
+
       <button
         onClick={run}
-        disabled={loading || !description.trim()}
+        disabled={!canSubmit}
         className="flex items-center justify-center gap-2 py-2.5 bg-[var(--brand)] text-black rounded-xl font-bold text-sm disabled:opacity-40 hover:bg-[var(--brand)]/90 transition-colors"
       >
         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-        {loading ? 'Gerando…' : 'Sugerir Habilidades'}
+        {loading ? 'Analisando…' : imageBase64 ? 'Analisar imagem e sugerir' : 'Sugerir Habilidades'}
       </button>
+
       {error && <p className="text-red-400 text-xs">{error}</p>}
+
       {suggestions.map((s, i) => (
         <div key={i} className="bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl p-3 flex flex-col gap-1.5">
           <p className="text-sm font-bold text-[var(--brand)]">{s.name}</p>
