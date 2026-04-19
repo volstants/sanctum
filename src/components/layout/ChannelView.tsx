@@ -3,9 +3,10 @@
 import dynamic from 'next/dynamic';
 import type { Channel, Message } from '@/types';
 import { ChatView } from '@/components/chat/ChatView';
-import { Mic, BrainCircuit, ChevronRight } from 'lucide-react';
+import { BrainCircuit, ChevronRight } from 'lucide-react';
 
 const VTTCanvas = dynamic(() => import('@/components/canvas/VTTCanvas').then((m) => m.VTTCanvas), { ssr: false });
+const VoiceChannel = dynamic(() => import('@/components/voice/VoiceChannel').then((m) => m.VoiceChannel), { ssr: false });
 
 interface Props {
   channel: Channel;
@@ -64,16 +65,14 @@ export function ChannelView({ channel, realmId, userId, isNarrator, displayName,
 
   if (channel.type === 'voice') {
     return (
-      <div className="h-full flex flex-col">
-        <div className="h-12 flex items-center px-4 border-b border-[var(--border)] flex-shrink-0">
-          <span className="font-semibold text-[var(--text-primary)] text-sm"># {channel.name}</span>
-        </div>
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-8">
-          <Mic className="w-12 h-12 text-[var(--text-muted)]" />
-          <p className="text-[var(--text-primary)] font-semibold">Voice Chat</p>
-          <p className="text-xs text-[var(--text-muted)]">Em breve — Fase 5</p>
-        </div>
-      </div>
+      <VoiceChannel
+        channelId={channel.id}
+        realmId={realmId}
+        channelName={channel.name}
+        userId={userId}
+        displayName={displayName}
+        isNarrator={isNarrator}
+      />
     );
   }
 
