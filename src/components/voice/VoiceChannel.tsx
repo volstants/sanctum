@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Mic, MicOff, PhoneOff, Volume2, VolumeX, Radio } from 'lucide-react';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useAmbientTTS } from '@/hooks/useAmbientTTS';
 import type { VoiceParticipant } from '@/hooks/useWebRTC';
+import { AMBIENT_PRESETS } from '@/lib/ambient-sounds';
 
 interface Props {
   channelId: string;
@@ -195,9 +196,33 @@ export function VoiceChannel({ channelId, realmId, channelName, userId, displayN
                 <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
                   Áudio Ambiente
                 </p>
+
+                {/* Preset grid */}
+                <div className="grid grid-cols-4 gap-1.5">
+                  {AMBIENT_PRESETS.map((p) => {
+                    const active = currentUrl === `preset:${p.id}`;
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => broadcastAmbient(`preset:${p.id}`, ambientVolume)}
+                        className="flex flex-col items-center gap-0.5 py-2 rounded-lg text-[10px] font-semibold transition-all hover:opacity-90"
+                        style={{
+                          backgroundColor: active ? 'var(--brand)' : 'var(--bg-primary)',
+                          border: `1px solid ${active ? 'var(--brand)' : 'var(--border)'}`,
+                          color: active ? '#000' : 'var(--text-secondary)',
+                        }}
+                      >
+                        <span className="text-base leading-none">{p.emoji}</span>
+                        <span>{p.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom URL */}
                 <input
                   type="text"
-                  placeholder="URL do áudio (mp3, ogg…)"
+                  placeholder="Ou cole URL do áudio (mp3, ogg…)"
                   value={ambientUrl}
                   onChange={(e) => setAmbientUrl(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg text-xs outline-none"
@@ -225,9 +250,9 @@ export function VoiceChannel({ channelId, realmId, channelName, userId, displayN
                     onClick={() => { if (ambientUrl.trim()) broadcastAmbient(ambientUrl.trim(), ambientVolume); }}
                     disabled={!ambientUrl.trim()}
                     className="flex-1 py-2 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-                    style={{ backgroundColor: 'var(--brand)', color: '#fff' }}
+                    style={{ backgroundColor: 'var(--brand)', color: '#000' }}
                   >
-                    {isPlaying ? 'Trocar' : 'Tocar'}
+                    {isPlaying && ambientUrl.trim() ? 'Trocar URL' : 'Tocar URL'}
                   </button>
                   <button
                     onClick={broadcastStop}
@@ -235,12 +260,14 @@ export function VoiceChannel({ channelId, realmId, channelName, userId, displayN
                     className="flex-1 py-2 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
                     style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
                   >
-                    Parar
+                    Parar tudo
                   </button>
                 </div>
                 {currentUrl && (
-                  <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
-                    Tocando: {currentUrl}
+                  <p className="text-[10px] truncate" style={{ color: 'var(--text-muted)' }}>
+                    ▶ {currentUrl.startsWith('preset:')
+                      ? AMBIENT_PRESETS.find(p => `preset:${p.id}` === currentUrl)?.label ?? currentUrl
+                      : currentUrl}
                   </p>
                 )}
               </div>

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { buildAmbientSound } from '@/lib/ambient-sounds';
+import type { AmbientPreset, AmbientNodes } from '@/lib/ambient-sounds';
 
 interface UseAmbientTTSOptions {
   realmId: string;
@@ -13,9 +15,21 @@ export function useAmbientTTS({ realmId }: UseAmbientTTSOptions) {
   const [currentUrl, setCurrentUrl] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const ambientNodesRef = useRef<AmbientNodes | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
   const stopAmbient = useCallback(() => {
+    // Stop Web Audio preset
+    if (ambientNodesRef.current) {
+      ambientNodesRef.current.stop();
+      ambientNodesRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+    // Stop HTML audio
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = '';
@@ -27,11 +41,23 @@ export function useAmbientTTS({ realmId }: UseAmbientTTSOptions) {
 
   const playAmbient = useCallback((url: string, volume: number) => {
     stopAmbient();
-    const audio = new Audio(url);
-    audio.loop = true;
-    audio.volume = Math.max(0, Math.min(1, volume));
-    audioRef.current = audio;
-    audio.play().catch(() => { /* autoplay policy */ });
+
+    if (url.startsWith('preset:')) {
+      // Procedural Web Audio
+      const preset = url.slice(7) as AmbientPreset;
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      const nodes = buildAmbientSound(ctx, preset, volume);
+      ambientNodesRef.current = nodes;
+    } else {
+      // Regular audio URL
+      const audio = new Audio(url);
+      audio.loop = true;
+      audio.volume = Math.max(0, Math.min(1, volume));
+      audioRef.current = audio;
+      audio.play().catch(() => {});
+    }
+
     setIsPlaying(true);
     setCurrentUrl(url);
   }, [stopAmbient]);
